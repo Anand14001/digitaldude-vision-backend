@@ -35,6 +35,11 @@ set, every month, indefinitely. Modelling that as a project would mean either
 twelve projects a year per client or losing history. So the system has both:
 
 - **Projects** — one-off, dated work. Web builds, campaigns, brand identities.
+  A project is either **client work**, which names the client it is for, or
+  **internal** — the agency's own website, hiring, R&D — which has no client at
+  all. Internal projects are forced out of every client portal regardless of the
+  visible-to-client flag, and the API refuses the two incoherent states: client
+  work without a client, and internal work with one.
 - **Retainers** — recurring engagements that spawn a **cycle** per billing
   period. Each cycle has its own task board and deliverables, so October's work
   is separable from November's while the agreement stays one record.
@@ -45,7 +50,7 @@ twelve projects a year per client or losing history. So the system has both:
 |---|---|---|
 | 1 | Clients | Accounts, multiple contacts each, industry, service lines bought, account manager, files, notes |
 | 2 | Leads | Pre-sale pipeline with source (referral, Instagram, walk-in…), interaction timeline, convert-to-client |
-| 3 | Projects | Client-linked, typed, running on a workflow; team, budget, milestones, stage history |
+| 3 | Projects | Client work or internal, typed, running on a workflow; team, budget, milestones, stage history |
 | 4 | Retainers | Recurring agreements with a billing cycle, auto-opening periods, per-cycle boards |
 | 5 | Tasks | Assignee, status from the workflow, priority, estimate, subtasks, dependencies, checklist, watchers, files |
 | 6 | Workflows | Admin-built: ordered stages, the task status set, and a checklist of default tasks per stage |

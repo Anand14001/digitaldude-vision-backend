@@ -85,7 +85,8 @@ const taskSelect = {
 async function resolveWorkflowId(input: {
   projectId?: string | null;
   retainerCycleId?: string | null;
-}): Promise<{ workflowId: string; clientId: string }> {
+  // clientId is null for an internal project, which has no client.
+}): Promise<{ workflowId: string; clientId: string | null }> {
   if (input.projectId) {
     const project = await prisma.project.findFirst({
       where: { id: input.projectId, deletedAt: null },

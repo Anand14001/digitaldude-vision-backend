@@ -27,7 +27,9 @@
     "admin:password": "tsx prisma/set-admin-password.ts",
     "test:smoke": "node tests/smoke.mjs",
     "test:portal": "node tests/portal-scoping.mjs",
-    "test:api": "npm run test:smoke && npm run test:portal"
+    "test:api": "npm run test:smoke && npm run test:portal && npm run test:kind",
+    "db:clean-tests": "tsx prisma/clean-test-data.ts",
+    "test:kind": "node tests/project-kind.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

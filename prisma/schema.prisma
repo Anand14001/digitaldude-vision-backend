@@ -687,6 +687,14 @@ model TaskStatus {
 // PROJECTS, RETAINERS & TASKS
 // ============================================================================
 
+enum ProjectKind {
+  /// Delivered for a client; requires a client account.
+  CLIENT
+  /// The agency's own work - our website, hiring, R&D. Never has a client, and
+  /// is therefore invisible to every client portal.
+  INTERNAL
+}
+
 enum ProjectStatus {
   PLANNING
   ACTIVE
@@ -712,7 +720,10 @@ model Project {
   id             String        @id @default(cuid())
   code           String        @unique
   name           String
-  clientId       String
+  kind           ProjectKind   @default(CLIENT)
+  /// Required for CLIENT projects, always null for INTERNAL ones. The service
+  /// layer enforces the pairing, which a database check cannot express cleanly.
+  clientId       String?
   projectTypeId  String?
   serviceLineId  String?
   workflowId     String
@@ -737,7 +748,7 @@ model Project {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  client       Client           @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  client       Client?          @relation(fields: [clientId], references: [id], onDelete: Restrict)
   projectType  ProjectType?     @relation(fields: [projectTypeId], references: [id], onDelete: SetNull)
   serviceLine  ServiceLine?     @relation(fields: [serviceLineId], references: [id], onDelete: SetNull)
   workflow     WorkflowTemplate @relation(fields: [workflowId], references: [id], onDelete: Restrict)
@@ -754,6 +765,7 @@ model Project {
   events       CalendarEvent[]
 
   @@index([clientId, status])
+  @@index([kind, status])
   @@index([managerId])
   @@index([dueDate])
   @@index([deletedAt])

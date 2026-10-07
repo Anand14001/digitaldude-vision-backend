@@ -519,7 +519,7 @@ reportsRouter.get(
         dayjs(e.workDate).format('YYYY-MM-DD'),
         e.employee.employeeCode,
         e.employee.user.name,
-        e.project?.client.name ?? '',
+        e.project?.client?.name ?? (e.project ? 'Internal' : ''),
         e.project ? `${e.project.code} ${e.project.name}` : '',
         e.task ? `${e.task.reference} ${e.task.title}` : '',
         Number(e.hours),
@@ -552,7 +552,7 @@ reportsRouter.get(
       rows = projects.map((p) => [
         p.code,
         p.name,
-        p.client.name,
+        p.client?.name ?? 'Internal',
         p.status,
         p.currentStage?.name ?? '',
         p.health,

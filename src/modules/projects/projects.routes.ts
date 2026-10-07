@@ -18,9 +18,13 @@ const SORTABLE = ['createdAt', 'name', 'dueDate', 'status', 'priority', 'code'] 
 const STATUSES = ['PLANNING', 'ACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED'] as const;
 const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as const;
 
+const KINDS = ['CLIENT', 'INTERNAL'] as const;
+
 const projectBody = z.object({
   name: z.string().trim().min(2).max(160),
-  clientId: z.string().cuid(),
+  kind: z.enum(KINDS).default('CLIENT'),
+  /// Required when kind is CLIENT, rejected when it is INTERNAL.
+  clientId: z.string().cuid().nullish(),
   projectTypeId: z.string().cuid().nullish(),
   serviceLineId: z.string().cuid().nullish(),
   workflowId: z.string().cuid(),
@@ -38,7 +42,22 @@ const projectBody = z.object({
   seedDefaultTasks: z.boolean().default(true),
 });
 
+/**
+ * A client project must name its client; an agency-internal project must not.
+ * Checked here rather than in the schema so both create and update share it and
+ * the message is the same either way.
+ */
+function assertKindAndClientAgree(kind: 'CLIENT' | 'INTERNAL', clientId: string | null | undefined) {
+  if (kind === 'CLIENT' && !clientId) {
+    throw badRequest('Choose the client this project is for, or mark it as internal');
+  }
+  if (kind === 'INTERNAL' && clientId) {
+    throw badRequest('An internal project cannot belong to a client');
+  }
+}
+
 const listQuery = paginationSchema.extend({
+  kind: z.enum(KINDS).optional(),
   status: z.enum(STATUSES).optional(),
   priority: z.enum(PRIORITIES).optional(),
   clientId: z.string().cuid().optional(),
@@ -56,6 +75,7 @@ const listSelect = {
   id: true,
   code: true,
   name: true,
+  kind: true,
   status: true,
   priority: true,
   health: true,
@@ -88,6 +108,7 @@ projectsRouter.get(
       ...projectWhere(req.ctx),
       ...(q.status ? { status: q.status } : {}),
       ...(q.priority ? { priority: q.priority } : {}),
+      ...(q.kind ? { kind: q.kind } : {}),
       ...(q.clientId ? { clientId: q.clientId } : {}),
       ...(q.managerId ? { managerId: q.managerId } : {}),
       ...(q.serviceLineId ? { serviceLineId: q.serviceLineId } : {}),
@@ -234,18 +255,21 @@ projectsRouter.post(
   validateBody(projectBody),
   asyncHandler(async (req, res) => {
     const body = req.body as z.infer<typeof projectBody>;
+    assertKindAndClientAgree(body.kind, body.clientId);
 
     const [client, workflow] = await Promise.all([
-      prisma.client.findFirst({
-        where: { id: body.clientId, deletedAt: null },
-        select: { id: true, name: true },
-      }),
+      body.clientId
+        ? prisma.client.findFirst({
+            where: { id: body.clientId, deletedAt: null },
+            select: { id: true, name: true },
+          })
+        : null,
       prisma.workflowTemplate.findUnique({
         where: { id: body.workflowId },
         select: { id: true, isArchived: true },
       }),
     ]);
-    if (!client) throw badRequest('That client does not exist');
+    if (body.clientId && !client) throw badRequest('That client does not exist');
     if (!workflow) throw badRequest('That workflow does not exist');
     if (workflow.isArchived) throw badRequest('That workflow has been archived');
 
@@ -257,7 +281,8 @@ projectsRouter.post(
         data: {
           code,
           name: body.name,
-          clientId: body.clientId,
+          kind: body.kind,
+          clientId: body.kind === 'INTERNAL' ? null : (body.clientId ?? null),
           projectTypeId: body.projectTypeId ?? null,
           serviceLineId: body.serviceLineId ?? null,
           workflowId: body.workflowId,
@@ -270,7 +295,8 @@ projectsRouter.post(
           dueDate: body.dueDate ?? null,
           budgetAmount: body.budgetAmount ?? null,
           estimateHours: body.estimateHours ?? null,
-          visibleToClient: body.visibleToClient,
+          // Internal work is never shown in a portal, whatever was ticked.
+          visibleToClient: body.kind === 'INTERNAL' ? false : body.visibleToClient,
           members: {
             create: [...new Set(body.memberIds)].map((employeeId) => ({
               employeeId,
@@ -310,7 +336,9 @@ projectsRouter.post(
       entityType: 'Project',
       entityId: project.id,
       entityLabel: `${project.code} ${project.name}`,
-      summary: `Created project ${project.code} "${project.name}" for ${client.name}`,
+      summary: client
+        ? `Created project ${project.code} "${project.name}" for ${client.name}`
+        : `Created internal project ${project.code} "${project.name}"`,
     });
 
     // Tell the team they are on it.
@@ -324,7 +352,7 @@ projectsRouter.post(
         userIds: users.map((u) => u.userId).filter((id) => id !== req.ctx.user.id),
         type: 'SYSTEM',
         title: `You were added to ${project.name}`,
-        body: `${client.name} - ${project.code}`,
+        body: client ? `${client.name} - ${project.code}` : `Internal - ${project.code}`,
         link: `/projects/${project.id}`,
         entityType: 'Project',
         entityId: project.id,
@@ -347,6 +375,13 @@ projectsRouter.patch(
     if (!before) throw notFound('Project');
 
     const data = req.body as Partial<z.infer<typeof projectBody>>;
+
+    // A project can be reclassified, but the result must still be coherent.
+    const nextKind = data.kind ?? before.kind;
+    const nextClientId =
+      data.clientId !== undefined ? data.clientId : before.clientId;
+    assertKindAndClientAgree(nextKind, nextClientId);
+
     if (data.workflowId && data.workflowId !== before.workflowId) {
       throw badRequest(
         'A project cannot be moved to a different workflow once it has started',
@@ -361,6 +396,10 @@ projectsRouter.patch(
       data: {
         ...data,
         workflowId: undefined,
+        kind: nextKind,
+        clientId: nextKind === 'INTERNAL' ? null : nextClientId,
+        // Internal work never surfaces in a portal.
+        ...(nextKind === 'INTERNAL' ? { visibleToClient: false } : {}),
         ...(data.status === 'COMPLETED' && before.status !== 'COMPLETED'
           ? { completedAt: new Date() }
           : {}),

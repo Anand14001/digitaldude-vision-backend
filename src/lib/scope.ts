@@ -22,7 +22,12 @@ export function portalClientId(ctx: AuthContext): string {
 
 export function projectWhere(ctx: AuthContext): Prisma.ProjectWhereInput {
   if (ctx.user.kind === 'CLIENT') {
-    return { clientId: portalClientId(ctx), visibleToClient: true, deletedAt: null };
+    return {
+      kind: 'CLIENT',
+      clientId: portalClientId(ctx),
+      visibleToClient: true,
+      deletedAt: null,
+    };
   }
   if (ctx.has('projects.view.all')) return { deletedAt: null };
   if (ctx.has('projects.view.assigned')) {

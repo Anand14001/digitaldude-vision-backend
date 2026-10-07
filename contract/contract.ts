@@ -1,7 +1,7 @@
 /**
  * GENERATED FILE - do not edit by hand.
  * Produced by digital-dude-api: npm run emit:contract
- * Generated at 2026-10-06T02:15:23.957Z
+ * Generated at 2026-10-07T05:39:45.253Z
  */
 
 export type UserKind = 'STAFF' | 'CLIENT';
@@ -143,6 +143,12 @@ export const TASK_STATUS_CATEGORY_VALUES: readonly TaskStatusCategory[] = [
   'REVIEW',
   'DONE',
   'CANCELLED',
+];
+
+export type ProjectKind = 'CLIENT' | 'INTERNAL';
+export const PROJECT_KIND_VALUES: readonly ProjectKind[] = [
+  'CLIENT',
+  'INTERNAL',
 ];
 
 export type ProjectStatus = 'PLANNING' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'CANCELLED';
