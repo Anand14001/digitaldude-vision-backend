@@ -9,6 +9,7 @@ npm run test:smoke       # every endpoint the web client calls
 npm run test:portal      # client-portal scoping, end to end
 npm run test:kind        # internal vs client projects
 npm run test:roles       # custom project roles and the single lead
+npm run test:edits       # the admin editing paths
 npm run test:api         # all three
 npm run db:clean-tests   # remove everything the suites created
 ```
@@ -51,6 +52,18 @@ Covers the custom project roles: several per person, exactly one lead, unknown
 or retired roles refused, a role in use refused for deletion, and removals
 actually taking effect. It also asserts the thing that matters most about them:
 assigning a role changes nothing about what the person is allowed to do.
+
+## `admin-edits.mjs`
+
+The editing an administrator does day to day: an employee's record, a client's
+details, and a client contact. Each change is written, read back and checked
+against the audit trail, including that the diff recorded what the field was
+before. It also covers the rules: a reporting loop is refused, making a second
+contact primary demotes the first, and editing a contact leaves their portal
+access alone.
+
+It creates its own throwaway employee, client and contact and removes them
+afterwards, so running it never rewrites a real record.
 
 ## Notes
 

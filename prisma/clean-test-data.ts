@@ -39,13 +39,19 @@ async function main() {
     where: { kind: 'CLIENT', email: { endsWith: CONTACT_DOMAIN } },
     select: { id: true, email: true },
   });
+  // Staff accounts the suites create, recognised by their placeholder domain.
+  const testStaff = await prisma.user.findMany({
+    where: { kind: 'STAFF', email: { endsWith: CONTACT_DOMAIN } },
+    select: { id: true, email: true },
+  });
 
   if (
     !projects.length &&
     !clients.length &&
     !deliverables.length &&
     !tasks.length &&
-    !portalUsers.length
+    !portalUsers.length &&
+    !testStaff.length
   ) {
     console.log('\nNothing to clean.\n');
     return;
@@ -54,7 +60,9 @@ async function main() {
   console.log('\nRemoving:');
   console.log(`  ${clients.length} client(s), ${projects.length} project(s)`);
   console.log(`  ${tasks.length} task(s), ${deliverables.length} deliverable(s)`);
-  console.log(`  ${portalUsers.length} portal account(s)\n`);
+  console.log(
+    `  ${portalUsers.length} portal account(s), ${testStaff.length} test staff account(s)\n`,
+  );
 
   const projectIds = projects.map((entry) => entry.id);
   const clientIds = clients.map((entry) => entry.id);
@@ -75,6 +83,22 @@ async function main() {
   await prisma.clientContact.deleteMany({ where: { clientId: { in: clientIds } } });
   await prisma.client.deleteMany({ where: { id: { in: clientIds } } });
   await prisma.user.deleteMany({ where: { id: { in: portalUsers.map((u) => u.id) } } });
+
+  // Deleting the user cascades to its employee record and project memberships.
+  if (testStaff.length) {
+    const staffIds = testStaff.map((u) => u.id);
+    const staffEmployees = await prisma.employee.findMany({
+      where: { userId: { in: staffIds } },
+      select: { id: true },
+    });
+    const employeeIds = staffEmployees.map((e) => e.id);
+    await prisma.timeEntry.deleteMany({ where: { employeeId: { in: employeeIds } } });
+    await prisma.task.updateMany({
+      where: { assigneeId: { in: employeeIds } },
+      data: { assigneeId: null },
+    });
+    await prisma.user.deleteMany({ where: { id: { in: staffIds } } });
+  }
 
   // Comments are keyed by entity id rather than a foreign key, so clear them too.
   await prisma.comment.deleteMany({
