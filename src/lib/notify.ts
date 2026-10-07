@@ -54,7 +54,7 @@ export async function notify(
           html: layout({
             heading: input.title,
             body: `<p>Hi ${u.name.split(' ')[0] ?? 'there'},</p><p>${input.body ?? ''}</p>`,
-            ctaLabel: input.link ? 'Open in CRM' : undefined,
+            ctaLabel: input.link ? 'Open in Vision' : undefined,
             ctaUrl: input.link ? `${process.env.WEB_APP_URL ?? ''}${input.link}` : undefined,
           }),
         }),

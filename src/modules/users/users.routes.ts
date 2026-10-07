@@ -214,10 +214,10 @@ usersRouter.post(
     const path = user.kind === 'CLIENT' ? '/portal/accept-invite' : '/accept-invite';
     await sendMail({
       to: user.email,
-      subject: 'Your Digital Dude CRM invitation',
+      subject: 'Your Vision invitation',
       html: layout({
         heading: 'You have been invited',
-        body: `<p>Hi ${user.name.split(' ')[0] ?? 'there'},</p><p>An account has been created for you on the Digital Dude CRM. Set your password to get started. This link expires in ${INVITE_TTL_DAYS} days.</p>`,
+        body: `<p>Hi ${user.name.split(' ')[0] ?? 'there'},</p><p>An account has been created for you on Vision, the Digital Dude workspace. Set your password to get started. This link expires in ${INVITE_TTL_DAYS} days.</p>`,
         ctaLabel: 'Set your password',
         ctaUrl: `${base}${path}?token=${token}`,
       }),
@@ -307,7 +307,7 @@ usersRouter.post(
 
     await sendMail({
       to: target.email,
-      subject: 'Set a new Digital Dude CRM password',
+      subject: 'Set a new Vision password',
       html: layout({
         heading: 'Password reset required',
         body: '<p>An administrator has asked you to set a new password. The link below is valid for one hour.</p>',

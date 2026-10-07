@@ -32,7 +32,7 @@ const schema = z.object({
   SMTP_PORT: z.coerce.number().int().optional(),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
-  MAIL_FROM: z.string().default('Digital Dude CRM <no-reply@digital-dude.com>'),
+  MAIL_FROM: z.string().default('Vision <no-reply@digital-dude.com>'),
 
   SEED_ADMIN_EMAIL: z.string().email().default('admin@digital-dude.com'),
   SEED_ADMIN_PASSWORD: z.string().default('ChangeMe!2026'),

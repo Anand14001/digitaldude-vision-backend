@@ -18,7 +18,7 @@ async function main(): Promise<void> {
   const server = app.listen(env.PORT, () => {
     logger.info(
       { port: env.PORT, env: env.NODE_ENV, origins: env.webOrigins },
-      `Digital Dude CRM API listening on http://localhost:${env.PORT}`,
+      `Vision API listening on http://localhost:${env.PORT}`,
     );
   });
 

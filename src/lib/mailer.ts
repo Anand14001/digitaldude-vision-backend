@@ -67,12 +67,12 @@ export function layout(opts: {
       : '';
   return `<!doctype html><html><body style="margin:0;background:#f1f5f9;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
   <div style="max-width:560px;margin:0 auto;padding:32px 20px">
-    <div style="font-weight:700;font-size:18px;color:#4f46e5;margin-bottom:20px">Digital Dude CRM</div>
+    <div style="font-weight:700;font-size:18px;color:#4f46e5;margin-bottom:20px">Vision</div>
     <div style="background:#fff;border-radius:12px;padding:28px;border:1px solid #e2e8f0">
       <h1 style="margin:0 0 14px;font-size:19px;color:#0f172a">${escapeHtml(opts.heading)}</h1>
       <div style="font-size:14px;line-height:1.65;color:#334155">${opts.body}</div>
       ${cta}
     </div>
-    <p style="color:#94a3b8;font-size:12px;margin-top:20px">You are receiving this because you have an account on the Digital Dude CRM.</p>
+    <p style="color:#94a3b8;font-size:12px;margin-top:20px">You are receiving this because you have an account on Vision, the Digital Dude workspace.</p>
   </div></body></html>`;
 }

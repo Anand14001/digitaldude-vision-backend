@@ -6,7 +6,7 @@ import { deriveHealth } from '../lib/workflowRuntime';
 import { openCycle } from '../modules/retainers/retainers.routes';
 
 /**
- * Background work the CRM needs without a separate worker process or a queue:
+ * Background work Vision needs without a separate worker process or a queue:
  * due-date nudges, project health, opening retainer cycles, renewal and
  * document-expiry reminders.
  *

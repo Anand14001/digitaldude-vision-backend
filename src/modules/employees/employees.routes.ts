@@ -400,10 +400,10 @@ employeesRouter.post(
     if (inviteToken) {
       await sendMail({
         to: body.email,
-        subject: 'Welcome to Digital Dude - set up your CRM account',
+        subject: 'Welcome to Digital Dude - set up your Vision account',
         html: layout({
           heading: `Welcome aboard, ${body.name.split(' ')[0] ?? ''}`.trim(),
-          body: '<p>Your account on the Digital Dude CRM is ready. Set a password to sign in and see your projects and tasks.</p>',
+          body: '<p>Your Vision account is ready. Set a password to sign in and see your projects and tasks.</p>',
           ctaLabel: 'Set your password',
           ctaUrl: `${env.webOrigins[0] ?? ''}/accept-invite?token=${inviteToken}`,
         }),

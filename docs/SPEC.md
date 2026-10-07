@@ -1,8 +1,9 @@
 Written for: whoever picks up this codebase next — a developer joining Digital Dude, or you in six months.
 
-# Digital Dude CRM — specification
+# Vision — specification
 
-Internal CRM for Digital Dude, a digital marketing and development agency in
+Vision is the internal workspace for Digital Dude, a digital marketing and
+development agency in
 Poonamallee, Chennai. It covers the whole operating cycle: an enquiry arrives,
 becomes a client, work is planned and delivered through a configurable pipeline,
 time and people are tracked against it, and the client follows progress in their
@@ -158,7 +159,7 @@ A project's team carries two separate ideas, kept apart on purpose:
   per project. Someone may hold several on the same project.
 
 These labels are **descriptive only**. They never grant anything: what a person
-can do always comes from their CRM role and the scoping in `lib/scope.ts`. That
+can do always comes from their Vision role and the scoping in `lib/scope.ts`. That
 separation is deliberate, because a role that quietly widens access on one
 project is the kind of thing nobody can reason about later. A label in use
 cannot be deleted - it is deactivated instead.

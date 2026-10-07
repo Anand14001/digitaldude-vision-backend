@@ -316,7 +316,7 @@ export async function forgotPassword(req: Request, email: string) {
   const url = `${env.webOrigins[0] ?? ''}/reset-password?token=${token}`;
   await sendMail({
     to: user.email,
-    subject: 'Reset your Digital Dude CRM password',
+    subject: 'Reset your Vision password',
     html: layout({
       heading: 'Reset your password',
       body: `<p>Hi ${user.name.split(' ')[0] ?? 'there'},</p><p>Use the button below to set a new password. This link expires in one hour. If you did not request it, you can ignore this email.</p>`,

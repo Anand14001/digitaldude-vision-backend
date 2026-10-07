@@ -1,6 +1,7 @@
-# Digital Dude CRM — API
+# Vision — API
 
-REST API for the Digital Dude internal CRM. Node + Express + TypeScript, Prisma,
+REST API for Vision, the Digital Dude internal workspace. Node + Express +
+TypeScript, Prisma,
 Postgres.
 
 The web client lives in a separate project (`../digital-dude-web`) and is
