@@ -1,0 +1,1528 @@
+// Digital Dude CRM - database schema
+// Postgres + Prisma. See docs/SPEC.md for the module map this models.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// IDENTITY, ROLES & PERMISSIONS
+// ============================================================================
+
+/// Staff and client-portal logins share this table but differ by KIND.
+/// Custom roles only ever apply to STAFF. CLIENT users are scoped by the client
+/// account they belong to, enforced in the data layer - never by a role flag.
+enum UserKind {
+  STAFF
+  CLIENT
+}
+
+enum UserStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+}
+
+enum ThemePreference {
+  LIGHT
+  DARK
+  SYSTEM
+}
+
+model User {
+  id                 String          @id @default(cuid())
+  kind               UserKind
+  email              String          @unique
+  passwordHash       String?
+  name               String
+  avatarFileId       String?
+  phone              String?
+  status             UserStatus      @default(INVITED)
+  theme              ThemePreference @default(SYSTEM)
+  mustChangePassword Boolean         @default(false)
+  lastLoginAt        DateTime?
+  inviteToken        String?         @unique
+  inviteExpiresAt    DateTime?
+  resetToken         String?         @unique
+  resetExpiresAt     DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  deletedAt          DateTime?
+
+  roleId String?
+  role   Role?   @relation(fields: [roleId], references: [id], onDelete: SetNull)
+
+  avatar           FileObject?              @relation("UserAvatar", fields: [avatarFileId], references: [id], onDelete: SetNull)
+  employee         Employee?
+  clientContact    ClientContact?
+  permissionGrants UserPermissionOverride[]
+  refreshTokens    RefreshToken[]
+  notifications    Notification[]
+  activityLogs     ActivityLog[]
+  uploadedFiles    FileObject[]             @relation("FileUploader")
+  comments         Comment[]
+  taskWatching     TaskWatcher[]
+  eventAttendance  EventAttendee[]
+  createdEvents    CalendarEvent[]          @relation("EventOrganizer")
+  approvalsGiven   Approval[]               @relation("ApprovalDecider")
+
+  @@index([kind, status])
+  @@index([deletedAt])
+}
+
+model RefreshToken {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  userAgent  String?
+  ip         String?
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  replacedBy String?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+}
+
+/// Admin-definable role. `permissions` holds keys from the hardcoded registry in
+/// src/permissions/registry.ts - the registry is the source of truth for which
+/// keys exist; the database only records which ones a role was granted.
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  /// System roles cannot be deleted.
+  isSystem    Boolean  @default(false)
+  /// The super-admin role: implicitly holds every permission and cannot be
+  /// stripped of settings access, so the org can never lock itself out.
+  isAdmin     Boolean  @default(false)
+  permissions String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users User[]
+}
+
+/// Per-user exception on top of their role, in either direction.
+model UserPermissionOverride {
+  id         String   @id @default(cuid())
+  userId     String
+  permission String
+  /// true = grant in addition to the role, false = revoke even if the role has it
+  allow      Boolean
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permission])
+}
+
+// ============================================================================
+// ORG STRUCTURE & EMPLOYEES
+// ============================================================================
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  code      String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employees Employee[]
+}
+
+model Designation {
+  id        String   @id @default(cuid())
+  title     String   @unique
+  level     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employees Employee[]
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERN
+  FREELANCE
+}
+
+enum EmployeeStatus {
+  ONBOARDING
+  ACTIVE
+  ON_NOTICE
+  EXITED
+}
+
+model Employee {
+  id             String         @id @default(cuid())
+  employeeCode   String         @unique
+  userId         String         @unique
+  departmentId   String?
+  designationId  String?
+  reportingToId  String?
+  employmentType EmploymentType @default(FULL_TIME)
+  status         EmployeeStatus @default(ONBOARDING)
+
+  /// Drives utilization reports and assignment suggestions.
+  weeklyCapacityHours Decimal @default(40) @db.Decimal(5, 2)
+
+  dateOfJoining DateTime
+  dateOfExit    DateTime?
+  probationEnd  DateTime?
+
+  // Personal details - sensitive, gated behind employees.pii.view
+  dateOfBirth      DateTime?
+  personalEmail    String?
+  personalPhone    String?
+  emergencyContact String?
+  emergencyPhone   String?
+  bloodGroup       String?
+  addressLine      String?
+  city             String?
+  state            String?
+  pincode          String?
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department  Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  designation Designation? @relation(fields: [designationId], references: [id], onDelete: SetNull)
+  reportingTo Employee?    @relation("ReportingLine", fields: [reportingToId], references: [id], onDelete: SetNull)
+  reports     Employee[]   @relation("ReportingLine")
+
+  skills             EmployeeSkill[]
+  documents          EmployeeDocument[]
+  compensation       EmployeeCompensation[]
+  assetAssignments   AssetAssignment[]
+  checklistItems     EmployeeChecklistItem[]
+  projectMemberships ProjectMember[]
+  tasksAssigned      Task[]                  @relation("TaskAssignee")
+  timeEntries        TimeEntry[]
+  timesheets         Timesheet[]
+  attendance         AttendanceRecord[]
+  leaveRequests      LeaveRequest[]          @relation("LeaveRequester")
+  leaveApprovals     LeaveRequest[]          @relation("LeaveApprover")
+  leaveBalances      LeaveBalance[]
+  reviewsAsSubject   PerformanceReview[]     @relation("ReviewSubject")
+  reviewsAsReviewer  PerformanceReview[]     @relation("ReviewReviewer")
+  goals              Goal[]
+  accountsManaged    Client[]                @relation("AccountManager")
+  leadsOwned         Lead[]                  @relation("LeadOwner")
+  projectsManaged    Project[]               @relation("ProjectManager")
+
+  @@index([status])
+  @@index([departmentId])
+  @@index([reportingToId])
+}
+
+model Skill {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  category  String?
+  createdAt DateTime @default(now())
+
+  employees EmployeeSkill[]
+}
+
+enum SkillLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  EXPERT
+}
+
+model EmployeeSkill {
+  id         String     @id @default(cuid())
+  employeeId String
+  skillId    String
+  level      SkillLevel @default(INTERMEDIATE)
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  skill    Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, skillId])
+}
+
+enum EmployeeDocumentType {
+  OFFER_LETTER
+  CONTRACT
+  ID_PROOF
+  ADDRESS_PROOF
+  EDUCATION
+  PAYSLIP
+  NDA
+  OTHER
+}
+
+model EmployeeDocument {
+  id         String               @id @default(cuid())
+  employeeId String
+  type       EmployeeDocumentType
+  title      String
+  fileId     String
+  /// Drives expiry reminders (contracts, ID validity).
+  expiresAt  DateTime?
+  createdAt  DateTime             @default(now())
+
+  employee Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  file     FileObject @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@index([expiresAt])
+}
+
+/// Salary history. Hidden unless the caller holds employees.compensation.view.
+model EmployeeCompensation {
+  id            String   @id @default(cuid())
+  employeeId    String
+  effectiveFrom DateTime
+  ctcAnnual     Decimal  @db.Decimal(12, 2)
+  currency      String   @default("INR")
+  note          String?
+  createdAt     DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, effectiveFrom])
+}
+
+enum AssetCategory {
+  LAPTOP
+  DESKTOP
+  MONITOR
+  PHONE
+  CAMERA
+  LENS
+  AUDIO
+  LIGHTING
+  DRONE
+  ACCESSORY
+  SOFTWARE_LICENSE
+  OTHER
+}
+
+enum AssetStatus {
+  AVAILABLE
+  ASSIGNED
+  IN_REPAIR
+  RETIRED
+  LOST
+}
+
+/// Gear tracking - meaningful for a team that shoots and edits video.
+model Asset {
+  id           String        @id @default(cuid())
+  assetTag     String        @unique
+  name         String
+  category     AssetCategory
+  serialNumber String?
+  purchaseDate DateTime?
+  purchaseCost Decimal?      @db.Decimal(12, 2)
+  warrantyEnd  DateTime?
+  status       AssetStatus   @default(AVAILABLE)
+  notes        String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  assignments AssetAssignment[]
+
+  @@index([status, category])
+}
+
+model AssetAssignment {
+  id           String    @id @default(cuid())
+  assetId      String
+  employeeId   String
+  assignedAt   DateTime  @default(now())
+  returnedAt   DateTime?
+  conditionOut String?
+  conditionIn  String?
+  note         String?
+
+  asset    Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([assetId, returnedAt])
+  @@index([employeeId])
+}
+
+enum ChecklistKind {
+  ONBOARDING
+  OFFBOARDING
+}
+
+model ChecklistTemplate {
+  id        String        @id @default(cuid())
+  name      String
+  kind      ChecklistKind
+  isDefault Boolean       @default(false)
+  createdAt DateTime      @default(now())
+
+  items ChecklistTemplateItem[]
+
+  @@unique([name, kind])
+}
+
+model ChecklistTemplateItem {
+  id            String  @id @default(cuid())
+  templateId    String
+  label         String
+  description   String?
+  sortOrder     Int     @default(0)
+  ownerRoleHint String?
+  dueOffsetDays Int     @default(0)
+
+  template      ChecklistTemplate       @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  employeeItems EmployeeChecklistItem[]
+}
+
+model EmployeeChecklistItem {
+  id             String        @id @default(cuid())
+  employeeId     String
+  templateItemId String?
+  kind           ChecklistKind
+  label          String
+  dueDate        DateTime?
+  completedAt    DateTime?
+  completedById  String?
+  sortOrder      Int           @default(0)
+
+  employee     Employee               @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  templateItem ChecklistTemplateItem? @relation(fields: [templateItemId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId, kind])
+}
+
+// ============================================================================
+// CLIENTS, CONTACTS & LEADS
+// ============================================================================
+
+model ServiceLine {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  code      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  clients   ClientServiceLine[]
+  projects  Project[]
+  retainers Retainer[]
+}
+
+enum ClientStatus {
+  PROSPECT
+  ACTIVE
+  PAUSED
+  CHURNED
+}
+
+model Client {
+  id               String       @id @default(cuid())
+  name             String
+  legalName        String?
+  status           ClientStatus @default(ACTIVE)
+  industry         String?
+  website          String?
+  gstin            String?
+  phone            String?
+  email            String?
+  addressLine      String?
+  city             String?
+  state            String?
+  country          String       @default("India")
+  pincode          String?
+  logoFileId       String?
+  accountManagerId String?
+  onboardedAt      DateTime?
+  churnedAt        DateTime?
+  notes            String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  deletedAt        DateTime?
+
+  accountManager Employee?   @relation("AccountManager", fields: [accountManagerId], references: [id], onDelete: SetNull)
+  logo           FileObject? @relation("ClientLogo", fields: [logoFileId], references: [id], onDelete: SetNull)
+
+  contacts     ClientContact[]
+  serviceLines ClientServiceLine[]
+  projects     Project[]
+  retainers    Retainer[]
+  leads        Lead[]
+  files        FileObject[]        @relation("ClientFiles")
+  events       CalendarEvent[]
+
+  @@index([status])
+  @@index([accountManagerId])
+  @@index([deletedAt])
+}
+
+model ClientServiceLine {
+  clientId      String
+  serviceLineId String
+
+  client      Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  serviceLine ServiceLine @relation(fields: [serviceLineId], references: [id], onDelete: Cascade)
+
+  @@id([clientId, serviceLineId])
+}
+
+/// A person at a client. Optionally linked to a CLIENT user for portal access.
+model ClientContact {
+  id          String  @id @default(cuid())
+  clientId    String
+  userId      String? @unique
+  name        String
+  email       String
+  phone       String?
+  designation String?
+  isPrimary   Boolean @default(false)
+  /// Only a contact with portalEnabled and a linked user can sign in.
+  portalEnabled Boolean @default(false)
+  /// Approving deliverables is a separate right from merely viewing them.
+  canApprove    Boolean @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([clientId, email])
+  @@index([clientId])
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL_SENT
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum LeadSource {
+  REFERRAL
+  INSTAGRAM
+  FACEBOOK
+  GOOGLE
+  LINKEDIN
+  WALK_IN
+  COLD_OUTREACH
+  WEBSITE
+  EXISTING_CLIENT
+  OTHER
+}
+
+model Lead {
+  id             String     @id @default(cuid())
+  title          String
+  companyName    String?
+  contactName    String
+  email          String?
+  phone          String?
+  source         LeadSource @default(OTHER)
+  status         LeadStatus @default(NEW)
+  estimatedValue Decimal?   @db.Decimal(12, 2)
+  currency       String     @default("INR")
+  ownerId        String?
+  /// Set when the lead is converted into a client account.
+  clientId       String?
+  requirement    String?
+  nextFollowUpAt DateTime?
+  lostReason     String?
+  wonAt          DateTime?
+  lostAt         DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  deletedAt      DateTime?
+
+  owner      Employee?      @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  client     Client?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  activities LeadActivity[]
+
+  @@index([status, ownerId])
+  @@index([nextFollowUpAt])
+}
+
+enum LeadActivityType {
+  CALL
+  EMAIL
+  MEETING
+  WHATSAPP
+  NOTE
+  STATUS_CHANGE
+}
+
+model LeadActivity {
+  id          String           @id @default(cuid())
+  leadId      String
+  type        LeadActivityType
+  summary     String
+  occurredAt  DateTime         @default(now())
+  createdById String?
+  createdAt   DateTime         @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, occurredAt])
+}
+
+// ============================================================================
+// WORKFLOWS (admin-definable, per project type)
+// ============================================================================
+
+model ProjectType {
+  id                String   @id @default(cuid())
+  name              String   @unique
+  code              String   @unique
+  description       String?
+  defaultWorkflowId String?
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  defaultWorkflow WorkflowTemplate?  @relation("DefaultWorkflow", fields: [defaultWorkflowId], references: [id], onDelete: SetNull)
+  workflows       WorkflowTemplate[] @relation("WorkflowProjectType")
+  projects        Project[]
+  retainers       Retainer[]
+}
+
+/// A reusable pipeline: ordered stages plus the task status set used on its board.
+model WorkflowTemplate {
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  projectTypeId String?
+  isArchived    Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  projectType     ProjectType?    @relation("WorkflowProjectType", fields: [projectTypeId], references: [id], onDelete: SetNull)
+  defaultForTypes ProjectType[]   @relation("DefaultWorkflow")
+  stages          WorkflowStage[]
+  taskStatuses    TaskStatus[]
+  projects        Project[]
+  retainers       Retainer[]
+
+  @@unique([name, projectTypeId])
+}
+
+model WorkflowStage {
+  id         String  @id @default(cuid())
+  workflowId String
+  name       String
+  /// Hex colour used by the board, calendar and portal.
+  color      String  @default("#6366f1")
+  sortOrder  Int     @default(0)
+  /// Entering this stage means the project is delivered/closed.
+  isTerminal Boolean @default(false)
+  /// Work in this stage is waiting on the client (surfaced in the portal).
+  isClientFacing Boolean @default(false)
+  description String?
+  createdAt   DateTime @default(now())
+
+  workflow       WorkflowTemplate      @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  projects       Project[]
+  retainerCycles RetainerCycle[]
+  defaultTasks   WorkflowDefaultTask[]
+  stageHistory   ProjectStageHistory[]
+  tasks          Task[]
+
+  @@unique([workflowId, name])
+  @@index([workflowId, sortOrder])
+}
+
+/// Tasks auto-created when a project enters a stage - the agency's checklist.
+model WorkflowDefaultTask {
+  id            String   @id @default(cuid())
+  stageId       String
+  title         String
+  description   String?
+  estimateHours Decimal? @db.Decimal(6, 2)
+  dueOffsetDays Int      @default(0)
+  sortOrder     Int      @default(0)
+
+  stage WorkflowStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+}
+
+enum TaskStatusCategory {
+  TODO
+  IN_PROGRESS
+  BLOCKED
+  REVIEW
+  DONE
+  CANCELLED
+}
+
+model TaskStatus {
+  id         String             @id @default(cuid())
+  workflowId String
+  name       String
+  category   TaskStatusCategory @default(TODO)
+  color      String             @default("#64748b")
+  sortOrder  Int                @default(0)
+  isDefault  Boolean            @default(false)
+  createdAt  DateTime           @default(now())
+
+  workflow WorkflowTemplate @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  tasks    Task[]
+
+  @@unique([workflowId, name])
+  @@index([workflowId, sortOrder])
+}
+
+// ============================================================================
+// PROJECTS, RETAINERS & TASKS
+// ============================================================================
+
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum HealthStatus {
+  ON_TRACK
+  AT_RISK
+  OFF_TRACK
+}
+
+model Project {
+  id             String        @id @default(cuid())
+  code           String        @unique
+  name           String
+  clientId       String
+  projectTypeId  String?
+  serviceLineId  String?
+  workflowId     String
+  currentStageId String?
+  managerId      String?
+  status         ProjectStatus @default(PLANNING)
+  priority       Priority      @default(MEDIUM)
+  health         HealthStatus  @default(ON_TRACK)
+
+  description String?
+  startDate   DateTime?
+  dueDate     DateTime?
+  completedAt DateTime?
+
+  budgetAmount  Decimal? @db.Decimal(12, 2)
+  currency      String   @default("INR")
+  estimateHours Decimal? @db.Decimal(8, 2)
+  /// Visible in the client portal when true.
+  visibleToClient Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  client       Client           @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  projectType  ProjectType?     @relation(fields: [projectTypeId], references: [id], onDelete: SetNull)
+  serviceLine  ServiceLine?     @relation(fields: [serviceLineId], references: [id], onDelete: SetNull)
+  workflow     WorkflowTemplate @relation(fields: [workflowId], references: [id], onDelete: Restrict)
+  currentStage WorkflowStage?   @relation(fields: [currentStageId], references: [id], onDelete: SetNull)
+  manager      Employee?        @relation("ProjectManager", fields: [managerId], references: [id], onDelete: SetNull)
+
+  members      ProjectMember[]
+  tasks        Task[]
+  deliverables Deliverable[]
+  milestones   Milestone[]
+  stageHistory ProjectStageHistory[]
+  timeEntries  TimeEntry[]
+  files        FileObject[]          @relation("ProjectFiles")
+  events       CalendarEvent[]
+
+  @@index([clientId, status])
+  @@index([managerId])
+  @@index([dueDate])
+  @@index([deletedAt])
+}
+
+enum ProjectRole {
+  LEAD
+  MEMBER
+  REVIEWER
+  OBSERVER
+}
+
+model ProjectMember {
+  id         String      @id @default(cuid())
+  projectId  String
+  employeeId String
+  role       ProjectRole @default(MEMBER)
+  /// Planned hours per week on this project - feeds the workload heatmap.
+  allocationHours Decimal? @db.Decimal(5, 2)
+  addedAt    DateTime    @default(now())
+
+  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, employeeId])
+  @@index([employeeId])
+}
+
+model ProjectStageHistory {
+  id        String    @id @default(cuid())
+  projectId String
+  stageId   String
+  enteredAt DateTime  @default(now())
+  exitedAt  DateTime?
+  movedById String?
+  note      String?
+
+  project Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stage   WorkflowStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, enteredAt])
+}
+
+model Milestone {
+  id          String    @id @default(cuid())
+  projectId   String
+  title       String
+  dueDate     DateTime
+  completedAt DateTime?
+  description String?
+  createdAt   DateTime  @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, dueDate])
+}
+
+enum BillingCycle {
+  MONTHLY
+  QUARTERLY
+  HALF_YEARLY
+  ANNUAL
+}
+
+enum RetainerStatus {
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+/// Recurring engagements (SMM, influencer management, maintenance). Each billing
+/// period becomes a RetainerCycle with its own task board, so history survives.
+model Retainer {
+  id                 String         @id @default(cuid())
+  code               String         @unique
+  name               String
+  clientId           String
+  serviceLineId      String?
+  projectTypeId      String?
+  workflowId         String
+  managerId          String?
+  status             RetainerStatus @default(ACTIVE)
+  billingCycle       BillingCycle   @default(MONTHLY)
+  amountPerCycle     Decimal?       @db.Decimal(12, 2)
+  currency           String         @default("INR")
+  startDate          DateTime
+  endDate            DateTime?
+  /// Day of month on which the next cycle opens.
+  cycleStartDay      Int            @default(1)
+  autoGenerateCycles Boolean        @default(true)
+  scopeNotes         String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  deletedAt          DateTime?
+
+  client      Client           @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  serviceLine ServiceLine?     @relation(fields: [serviceLineId], references: [id], onDelete: SetNull)
+  projectType ProjectType?     @relation(fields: [projectTypeId], references: [id], onDelete: SetNull)
+  workflow    WorkflowTemplate @relation(fields: [workflowId], references: [id], onDelete: Restrict)
+  cycles      RetainerCycle[]
+
+  @@index([clientId, status])
+  @@index([endDate])
+}
+
+enum CycleStatus {
+  UPCOMING
+  IN_PROGRESS
+  DELIVERED
+  CLOSED
+}
+
+model RetainerCycle {
+  id             String      @id @default(cuid())
+  retainerId     String
+  label          String
+  periodStart    DateTime
+  periodEnd      DateTime
+  status         CycleStatus @default(UPCOMING)
+  currentStageId String?
+  deliveredAt    DateTime?
+  notes          String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  retainer     Retainer       @relation(fields: [retainerId], references: [id], onDelete: Cascade)
+  currentStage WorkflowStage? @relation(fields: [currentStageId], references: [id], onDelete: SetNull)
+  tasks        Task[]
+  deliverables Deliverable[]
+
+  @@unique([retainerId, periodStart])
+  @@index([retainerId, periodStart])
+}
+
+/// A task belongs to EITHER a project or a retainer cycle - exactly one, which
+/// the service layer enforces (Postgres cannot express it as a simple check).
+model Task {
+  id              String   @id @default(cuid())
+  reference       String   @unique
+  title           String
+  description     String?
+  projectId       String?
+  retainerCycleId String?
+  stageId         String?
+  statusId        String
+  assigneeId      String?
+  parentTaskId    String?
+  priority        Priority @default(MEDIUM)
+
+  startDate     DateTime?
+  dueDate       DateTime?
+  completedAt   DateTime?
+  estimateHours Decimal?  @db.Decimal(6, 2)
+  sortOrder     Int       @default(0)
+  /// Shown to the client in the portal when true.
+  visibleToClient Boolean @default(false)
+
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  project       Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  retainerCycle RetainerCycle? @relation(fields: [retainerCycleId], references: [id], onDelete: Cascade)
+  stage         WorkflowStage? @relation(fields: [stageId], references: [id], onDelete: SetNull)
+  status        TaskStatus     @relation(fields: [statusId], references: [id], onDelete: Restrict)
+  assignee      Employee?      @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  parentTask    Task?          @relation("Subtasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
+
+  subtasks    Task[]              @relation("Subtasks")
+  dependsOn   TaskDependency[]    @relation("DependentTask")
+  blocking    TaskDependency[]    @relation("BlockingTask")
+  checklist   TaskChecklistItem[]
+  watchers    TaskWatcher[]
+  timeEntries TimeEntry[]
+  files       FileObject[]        @relation("TaskFiles")
+
+  @@index([projectId, statusId])
+  @@index([retainerCycleId])
+  @@index([assigneeId, dueDate])
+  @@index([dueDate])
+  @@index([deletedAt])
+}
+
+enum DependencyType {
+  FINISH_TO_START
+  START_TO_START
+  FINISH_TO_FINISH
+}
+
+model TaskDependency {
+  id String @id @default(cuid())
+  /// taskId cannot proceed until blockingTaskId is satisfied.
+  taskId         String
+  blockingTaskId String
+  type           DependencyType @default(FINISH_TO_START)
+  createdAt      DateTime       @default(now())
+
+  task         Task @relation("DependentTask", fields: [taskId], references: [id], onDelete: Cascade)
+  blockingTask Task @relation("BlockingTask", fields: [blockingTaskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, blockingTaskId])
+}
+
+model TaskChecklistItem {
+  id          String    @id @default(cuid())
+  taskId      String
+  label       String
+  completedAt DateTime?
+  sortOrder   Int       @default(0)
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+}
+
+model TaskWatcher {
+  taskId  String
+  userId  String
+  addedAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, userId])
+}
+
+// ============================================================================
+// DELIVERABLES & CLIENT APPROVALS
+// ============================================================================
+
+enum DeliverableStatus {
+  DRAFT
+  INTERNAL_REVIEW
+  CLIENT_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  PUBLISHED
+}
+
+model Deliverable {
+  id              String            @id @default(cuid())
+  title           String
+  description     String?
+  projectId       String?
+  retainerCycleId String?
+  status          DeliverableStatus @default(DRAFT)
+  dueDate         DateTime?
+  /// Set when a client contact approves the current version.
+  approvedAt      DateTime?
+  publishedAt     DateTime?
+  createdById     String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  project       Project?             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  retainerCycle RetainerCycle?       @relation(fields: [retainerCycleId], references: [id], onDelete: Cascade)
+  versions      DeliverableVersion[]
+  approvals     Approval[]
+
+  @@index([projectId, status])
+  @@index([retainerCycleId, status])
+}
+
+model DeliverableVersion {
+  id            String   @id @default(cuid())
+  deliverableId String
+  versionNumber Int
+  notes         String?
+  submittedById String?
+  createdAt     DateTime @default(now())
+
+  deliverable Deliverable  @relation(fields: [deliverableId], references: [id], onDelete: Cascade)
+  files       FileObject[] @relation("DeliverableVersionFiles")
+  approvals   Approval[]
+
+  @@unique([deliverableId, versionNumber])
+}
+
+enum ApprovalDecision {
+  PENDING
+  APPROVED
+  CHANGES_REQUESTED
+}
+
+enum ApprovalStage {
+  INTERNAL
+  CLIENT
+}
+
+model Approval {
+  id            String           @id @default(cuid())
+  deliverableId String
+  versionId     String?
+  stage         ApprovalStage
+  decision      ApprovalDecision @default(PENDING)
+  decidedById   String?
+  decidedAt     DateTime?
+  comment       String?
+  requestedAt   DateTime         @default(now())
+
+  deliverable Deliverable         @relation(fields: [deliverableId], references: [id], onDelete: Cascade)
+  version     DeliverableVersion? @relation(fields: [versionId], references: [id], onDelete: SetNull)
+  decidedBy   User?               @relation("ApprovalDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@index([deliverableId, stage])
+  @@index([decision])
+}
+
+// ============================================================================
+// TIME, ATTENDANCE, LEAVE & PERFORMANCE
+// ============================================================================
+
+enum TimesheetStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+/// Weekly container an employee submits for approval.
+model Timesheet {
+  id           String          @id @default(cuid())
+  employeeId   String
+  weekStart    DateTime        @db.Date
+  weekEnd      DateTime        @db.Date
+  status       TimesheetStatus @default(DRAFT)
+  submittedAt  DateTime?
+  approvedById String?
+  approvedAt   DateTime?
+  rejectReason String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  employee Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  entries  TimeEntry[]
+
+  @@unique([employeeId, weekStart])
+  @@index([status])
+}
+
+model TimeEntry {
+  id          String   @id @default(cuid())
+  employeeId  String
+  taskId      String?
+  projectId   String?
+  timesheetId String?
+  workDate    DateTime @db.Date
+  hours       Decimal  @db.Decimal(5, 2)
+  billable    Boolean  @default(true)
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  employee  Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  task      Task?      @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  project   Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  timesheet Timesheet? @relation(fields: [timesheetId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId, workDate])
+  @@index([taskId])
+  @@index([projectId, workDate])
+}
+
+enum AttendanceStatus {
+  PRESENT
+  WORK_FROM_HOME
+  HALF_DAY
+  ON_LEAVE
+  HOLIDAY
+  WEEKLY_OFF
+  ABSENT
+}
+
+model AttendanceRecord {
+  id            String           @id @default(cuid())
+  employeeId    String
+  workDate      DateTime         @db.Date
+  status        AttendanceStatus @default(PRESENT)
+  checkInAt     DateTime?
+  checkOutAt    DateTime?
+  workedMinutes Int?
+  lateMinutes   Int?
+  note          String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, workDate])
+  @@index([workDate])
+}
+
+model LeaveType {
+  id            String   @id @default(cuid())
+  name          String   @unique
+  code          String   @unique
+  /// Days granted per year; 0 means unaccrued (e.g. loss of pay).
+  annualQuota   Decimal  @default(0) @db.Decimal(5, 2)
+  isPaid        Boolean  @default(true)
+  carryForward  Boolean  @default(false)
+  requiresProof Boolean  @default(false)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  requests LeaveRequest[]
+  balances LeaveBalance[]
+}
+
+model LeaveBalance {
+  id          String  @id @default(cuid())
+  employeeId  String
+  leaveTypeId String
+  year        Int
+  entitled    Decimal @default(0) @db.Decimal(5, 2)
+  used        Decimal @default(0) @db.Decimal(5, 2)
+  carriedOver Decimal @default(0) @db.Decimal(5, 2)
+
+  employee  Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, leaveTypeId, year])
+}
+
+enum LeaveRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model LeaveRequest {
+  id          String   @id @default(cuid())
+  employeeId  String
+  leaveTypeId String
+  startDate   DateTime @db.Date
+  endDate     DateTime @db.Date
+  /// Half days are supported, hence decimal.
+  totalDays    Decimal            @db.Decimal(5, 2)
+  reason       String?
+  status       LeaveRequestStatus @default(PENDING)
+  approverId   String?
+  decidedAt    DateTime?
+  decisionNote String?
+  proofFileId  String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  employee  Employee    @relation("LeaveRequester", fields: [employeeId], references: [id], onDelete: Cascade)
+  approver  Employee?   @relation("LeaveApprover", fields: [approverId], references: [id], onDelete: SetNull)
+  leaveType LeaveType   @relation(fields: [leaveTypeId], references: [id], onDelete: Restrict)
+  proofFile FileObject? @relation("LeaveProof", fields: [proofFileId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId, status])
+  @@index([startDate, endDate])
+}
+
+model Holiday {
+  id         String   @id @default(cuid())
+  name       String
+  date       DateTime @db.Date
+  isOptional Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@unique([name, date])
+  @@index([date])
+}
+
+/// Working-week definition; drives attendance defaults and due-date maths.
+model WorkSchedule {
+  id String @id @default(cuid())
+  name String @unique
+  /// 0=Sunday .. 6=Saturday
+  workingDays Int[]
+  startTime   String   @default("09:00")
+  endTime     String   @default("20:00")
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+enum ReviewCycleStatus {
+  DRAFT
+  OPEN
+  CLOSED
+}
+
+model ReviewCycle {
+  id          String            @id @default(cuid())
+  name        String            @unique
+  periodStart DateTime          @db.Date
+  periodEnd   DateTime          @db.Date
+  status      ReviewCycleStatus @default(DRAFT)
+  dueDate     DateTime?
+  createdAt   DateTime          @default(now())
+
+  reviews PerformanceReview[]
+}
+
+enum ReviewStatus {
+  PENDING_SELF
+  PENDING_MANAGER
+  COMPLETED
+}
+
+model PerformanceReview {
+  id              String       @id @default(cuid())
+  cycleId         String
+  employeeId      String
+  reviewerId      String?
+  status          ReviewStatus @default(PENDING_SELF)
+  selfRating      Int?
+  managerRating   Int?
+  selfComments    String?
+  managerComments String?
+  strengths       String?
+  improvements    String?
+  submittedAt     DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  cycle    ReviewCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  employee Employee    @relation("ReviewSubject", fields: [employeeId], references: [id], onDelete: Cascade)
+  reviewer Employee?   @relation("ReviewReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@unique([cycleId, employeeId])
+  @@index([employeeId])
+}
+
+enum GoalStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  ACHIEVED
+  MISSED
+}
+
+model Goal {
+  id          String     @id @default(cuid())
+  employeeId  String
+  title       String
+  description String?
+  metric      String?
+  target      String?
+  current     String?
+  weight      Int        @default(0)
+  status      GoalStatus @default(NOT_STARTED)
+  dueDate     DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, status])
+}
+
+// ============================================================================
+// CALENDAR, COMMENTS, FILES, NOTIFICATIONS, AUDIT
+// ============================================================================
+
+enum EventType {
+  MEETING
+  SHOOT
+  CLIENT_CALL
+  INTERNAL
+  DEADLINE
+  OTHER
+}
+
+model CalendarEvent {
+  id          String    @id @default(cuid())
+  title       String
+  type        EventType @default(MEETING)
+  description String?
+  location    String?
+  startAt     DateTime
+  endAt       DateTime
+  allDay      Boolean   @default(false)
+  projectId   String?
+  clientId    String?
+  organizerId String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project   Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  client    Client?         @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  organizer User?           @relation("EventOrganizer", fields: [organizerId], references: [id], onDelete: SetNull)
+  attendees EventAttendee[]
+
+  @@index([startAt])
+  @@index([projectId])
+}
+
+enum AttendeeResponse {
+  INVITED
+  ACCEPTED
+  DECLINED
+  TENTATIVE
+}
+
+model EventAttendee {
+  eventId  String
+  userId   String
+  response AttendeeResponse @default(INVITED)
+
+  event CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, userId])
+}
+
+/// Generic threaded comments; entityType is checked against an allowlist in code.
+enum CommentEntity {
+  TASK
+  PROJECT
+  CLIENT
+  LEAD
+  DELIVERABLE
+  RETAINER_CYCLE
+}
+
+model Comment {
+  id         String        @id @default(cuid())
+  entityType CommentEntity
+  entityId   String
+  authorId   String
+  body       String
+  /// User ids mentioned with @ - each gets a notification.
+  mentions   String[]
+  parentId   String?
+  /// Internal comments are never exposed through the client portal.
+  isInternal Boolean       @default(true)
+  editedAt   DateTime?
+  createdAt  DateTime      @default(now())
+  deletedAt  DateTime?
+
+  author  User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent  Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies Comment[] @relation("CommentReplies")
+
+  @@index([entityType, entityId, createdAt])
+}
+
+enum StorageProvider {
+  LOCAL
+  CLOUDINARY
+  S3
+}
+
+model FileObject {
+  id           String          @id @default(cuid())
+  provider     StorageProvider @default(LOCAL)
+  storageKey   String
+  url          String
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+  checksum     String?
+  uploadedById String?
+  /// Loose attachment points - a file may hang off any one of these.
+  clientId             String?
+  projectId            String?
+  taskId               String?
+  deliverableVersionId String?
+  createdAt            DateTime  @default(now())
+  deletedAt            DateTime?
+
+  uploadedBy         User?               @relation("FileUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  client             Client?             @relation("ClientFiles", fields: [clientId], references: [id], onDelete: Cascade)
+  project            Project?            @relation("ProjectFiles", fields: [projectId], references: [id], onDelete: Cascade)
+  task               Task?               @relation("TaskFiles", fields: [taskId], references: [id], onDelete: Cascade)
+  deliverableVersion DeliverableVersion? @relation("DeliverableVersionFiles", fields: [deliverableVersionId], references: [id], onDelete: Cascade)
+
+  userAvatars       User[]             @relation("UserAvatar")
+  clientLogos       Client[]           @relation("ClientLogo")
+  employeeDocuments EmployeeDocument[]
+  leaveProofs       LeaveRequest[]     @relation("LeaveProof")
+
+  @@index([projectId])
+  @@index([taskId])
+  @@index([clientId])
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_DUE_SOON
+  TASK_OVERDUE
+  MENTION
+  COMMENT_REPLY
+  APPROVAL_REQUESTED
+  APPROVAL_DECIDED
+  LEAVE_REQUESTED
+  LEAVE_DECIDED
+  TIMESHEET_SUBMITTED
+  TIMESHEET_DECIDED
+  PROJECT_STAGE_CHANGED
+  RETAINER_RENEWAL_DUE
+  DOCUMENT_EXPIRING
+  SYSTEM
+}
+
+model Notification {
+  id    String           @id @default(cuid())
+  userId String
+  type  NotificationType
+  title String
+  body  String?
+  /// Deep link path inside the SPA, e.g. /tasks/abc123
+  link        String?
+  entityType  String?
+  entityId    String?
+  readAt      DateTime?
+  emailSentAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  RESTORE
+  LOGIN
+  LOGIN_FAILED
+  LOGOUT
+  PERMISSION_CHANGE
+  STATUS_CHANGE
+  STAGE_CHANGE
+  APPROVE
+  REJECT
+  EXPORT
+  FILE_UPLOAD
+  FILE_DELETE
+}
+
+/// Append-only audit trail, written by the service layer on every mutation.
+model ActivityLog {
+  id          String      @id @default(cuid())
+  actorId     String?
+  actorLabel  String
+  action      AuditAction
+  entityType  String
+  entityId    String?
+  entityLabel String?
+  summary     String
+  /// Field-level before/after diff: { field: { from, to } }
+  diff        Json?
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime    @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([createdAt])
+}
+
+/// Org-level key/value settings (profile, branding, feature toggles).
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+/// Human-readable sequence counters behind PRJ-0001, TSK-0001 and friends.
+model Sequence {
+  key     String @id
+  current Int    @default(0)
+}
