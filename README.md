@@ -65,7 +65,7 @@ Set it to `false` for any real database.
 ```
 src/
 ├── config/env.ts          Zod-validated environment; refuses to boot if wrong
-├── permissions/registry.ts  The 84 permission keys — source of truth
+├── permissions/registry.ts  The 85 permission keys — source of truth
 ├── lib/
 │   ├── scope.ts           Who can see which rows, in one place
 │   ├── audit.ts           Field-level diffs into the audit trail

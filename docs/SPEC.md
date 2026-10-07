@@ -82,7 +82,7 @@ authorises on ownership, never on a permission key.
 
 ### Permissions
 
-84 keys in 16 groups, defined in `src/permissions/registry.ts`. The registry is
+85 keys in 16 groups, defined in `src/permissions/registry.ts`. The registry is
 the source of truth: a role row stores a subset of keys, and anything the
 registry no longer recognises is ignored. Keys read `<module>.<action>` with an
 optional scope:
@@ -101,6 +101,15 @@ organisation locking itself out of Settings.
 
 Per-user overrides exist in both directions on top of a role, and an explicit
 revoke always wins.
+
+Every staff account also gets `BASELINE_STAFF_PERMISSIONS` regardless of role,
+so the app is usable the moment someone is invited. The baseline is deliberately
+read-and-own-work only: it lets a person see the tasks assigned to them and
+`tasks.status.assigned` lets them move that work along — set a status, drag
+their own card, tick a checklist step — but editing what a task *is* needs
+`tasks.update.assigned` or `tasks.update` from a role. Nothing in the
+baseline grants `logs.view`; the audit trail sits with the Administrator
+unless a custom role deliberately opens it.
 
 ### Where it is enforced
 

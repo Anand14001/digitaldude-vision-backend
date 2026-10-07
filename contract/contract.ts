@@ -1,7 +1,7 @@
 /**
  * GENERATED FILE - do not edit by hand.
  * Produced by digital-dude-api: npm run emit:contract
- * Generated at 2026-10-07T06:53:37.754Z
+ * Generated at 2026-10-07T09:36:55.873Z
  */
 
 export type UserKind = 'STAFF' | 'CLIENT';
@@ -384,6 +384,7 @@ export type PermissionKey =
   | 'tasks.create'
   | 'tasks.update'
   | 'tasks.update.assigned'
+  | 'tasks.status.assigned'
   | 'tasks.assign'
   | 'tasks.delete'
   | 'deliverables.view'
@@ -470,6 +471,7 @@ export const PERMISSION_KEYS: readonly PermissionKey[] = [
   'tasks.create',
   'tasks.update',
   'tasks.update.assigned',
+  'tasks.status.assigned',
   'tasks.assign',
   'tasks.delete',
   'deliverables.view',
@@ -592,6 +594,7 @@ export const PERMISSION_GROUPS: readonly PermissionGroupDefinition[] = [
       { key: 'tasks.create', label: "Create tasks" },
       { key: 'tasks.update', label: "Edit any task" },
       { key: 'tasks.update.assigned', label: "Edit tasks assigned to them" },
+      { key: 'tasks.status.assigned', label: "Change the status of their own tasks" },
       { key: 'tasks.assign', label: "Assign tasks to others" },
       { key: 'tasks.delete', label: "Delete tasks" },
     ],

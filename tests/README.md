@@ -90,6 +90,25 @@ Also covers that a null mention is a clear 400, that internal is the default,
 that a client-visible comment is a deliberate choice, and that a deleted comment
 leaves the thread.
 
+## `task-access.mjs`
+
+Runs as Meena (HR & Accounts), a staff account whose role grants nothing to do
+with delivery, and checks what she can actually do with a task someone assigned
+her.
+
+The staff baseline used to include `tasks.update.assigned`, so she got full
+edit rights over any task pointed at her - an Edit button on work she only
+needed to progress. The baseline now grants `tasks.status.assigned`: she can
+set the status, drag her own card and tick checklist steps off, while renaming,
+rescheduling, reassigning and deleting all come back 403. A status change
+smuggled in alongside an edit is still an edit.
+
+It also pins down two things that were wrong alongside it: the activity log and
+its CSV export are the Administrator's alone (the export used to accept
+`reports.export`, which half the roles hold), and a task carries the statuses
+it may take, so the dropdown works for an assignee who cannot read the project
+the task belongs to.
+
 ## Notes
 
 - They write real rows, named with a `SMOKE `, `PORTAL ` or `KIND ` prefix.

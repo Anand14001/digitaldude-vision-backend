@@ -22,6 +22,10 @@ const log = (message: string) => console.log(`  ${message}`);
 /**
  * Role presets. Administrator carries isAdmin, which implicitly grants every
  * permission in the registry, so its list is left empty on purpose.
+ *
+ * No preset grants `logs.view`: the activity log is the audit trail over
+ * everyone's work, so only an administrator sees it unless someone deliberately
+ * ticks it on a custom role.
  */
 const ROLES: {
   name: string;
@@ -54,7 +58,6 @@ const ROLES: {
       'performance.view.all', 'performance.manage', 'performance.goals.manage',
       'calendar.view.all', 'calendar.manage',
       'reports.view', 'reports.financial.view', 'reports.export',
-      'logs.view',
       'settings.workflows.manage', 'settings.masters.manage',
     ],
   },
@@ -118,7 +121,6 @@ const ROLES: {
       'leave.view.all', 'leave.approve', 'leave.balance.manage',
       'performance.view.all', 'performance.manage',
       'reports.view', 'reports.financial.view', 'reports.export',
-      'logs.view',
       'settings.masters.manage', 'settings.users.manage',
     ],
   },

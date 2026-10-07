@@ -108,14 +108,27 @@ async function resolveWorkflowId(input: {
 
 /**
  * Write access to one task. `tasks.update` covers everything; a user with only
- * `tasks.update.assigned` may edit the tasks they are on, which is how
- * individual contributors work their own board.
+ * `tasks.update.assigned` may edit the tasks they are on.
  */
 function assertCanEdit(ctx: AuthContext, task: { assigneeId: string | null }): void {
   if (ctx.has('tasks.update')) return;
   if (ctx.has('tasks.update.assigned') && task.assigneeId === ctx.employeeId) return;
-  throw forbidden('You can only edit tasks assigned to you');
+  throw forbidden('You do not have permission to edit this task');
 }
+
+/**
+ * Moving your own work along is a weaker right than editing it: every staff
+ * member can change the status of a task assigned to them, which is all an
+ * individual contributor needs, while the task's own fields stay read-only
+ * unless a role grants `tasks.update`.
+ */
+function assertCanSetStatus(ctx: AuthContext, task: { assigneeId: string | null }): void {
+  if (ctx.has('tasks.status.assigned') && task.assigneeId === ctx.employeeId) return;
+  assertCanEdit(ctx, task);
+}
+
+/** Fields a status-only grant is allowed to touch. */
+const STATUS_ONLY_FIELDS = new Set(['statusId', 'sortOrder']);
 
 // -------------------------------------------------------------------- listing
 tasksRouter.get(
@@ -309,7 +322,21 @@ tasksRouter.get(
       _sum: { hours: true },
     });
 
-    return ok(res, { ...task, loggedHours: logged._sum.hours ?? 0 });
+    // The statuses this task may take come with it. They used to be read from
+    // the parent project, which meant the status dropdown disappeared for
+    // anyone who could see the task but not the project it belongs to - an
+    // assignee outside the project team, for one.
+    const { workflowId } = await resolveWorkflowId({
+      projectId: task.projectId,
+      retainerCycleId: task.retainerCycleId,
+    });
+    const statusOptions = await prisma.taskStatus.findMany({
+      where: { workflowId },
+      orderBy: { sortOrder: 'asc' },
+      select: { id: true, name: true, color: true, category: true, sortOrder: true },
+    });
+
+    return ok(res, { ...task, loggedHours: logged._sum.hours ?? 0, statusOptions });
   }),
 );
 
@@ -400,7 +427,7 @@ tasksRouter.post(
 // --------------------------------------------------------------------- update
 tasksRouter.patch(
   '/:id',
-  requirePermission('tasks.update', 'tasks.update.assigned'),
+  requirePermission('tasks.update', 'tasks.update.assigned', 'tasks.status.assigned'),
   validateBody(
     taskBody.partial().omit({ checklist: true, projectId: true, retainerCycleId: true }),
   ),
@@ -410,11 +437,19 @@ tasksRouter.patch(
       include: { status: true },
     });
     if (!before) throw notFound('Task');
-    assertCanEdit(req.ctx, before);
 
     const data = req.body as Partial<
       Omit<z.infer<typeof taskBody>, 'checklist' | 'projectId' | 'retainerCycleId'>
     >;
+
+    // The status dropdown sends nothing but a status, and that much an assignee
+    // may always do. Anything else is an edit.
+    const touched = Object.keys(data).filter((key) => data[key as keyof typeof data] !== undefined);
+    if (touched.length > 0 && touched.every((key) => STATUS_ONLY_FIELDS.has(key))) {
+      assertCanSetStatus(req.ctx, before);
+    } else {
+      assertCanEdit(req.ctx, before);
+    }
 
     if (
       data.assigneeId !== undefined &&
@@ -496,7 +531,7 @@ tasksRouter.patch(
 /** Drag-and-drop on the board: new status plus new position. */
 tasksRouter.post(
   '/:id/move',
-  requirePermission('tasks.update', 'tasks.update.assigned'),
+  requirePermission('tasks.update', 'tasks.update.assigned', 'tasks.status.assigned'),
   validateBody(
     z.object({ statusId: z.string().cuid(), sortOrder: z.coerce.number().int().min(0).default(0) }),
   ),
@@ -506,7 +541,7 @@ tasksRouter.post(
       include: { status: true },
     });
     if (!before) throw notFound('Task');
-    assertCanEdit(req.ctx, before);
+    assertCanSetStatus(req.ctx, before);
 
     const { workflowId } = await resolveWorkflowId({
       projectId: before.projectId,
@@ -564,7 +599,7 @@ tasksRouter.post(
 
 tasksRouter.patch(
   '/checklist/:itemId',
-  requirePermission('tasks.update', 'tasks.update.assigned'),
+  requirePermission('tasks.update', 'tasks.update.assigned', 'tasks.status.assigned'),
   validateBody(
     z.object({
       label: z.string().trim().min(1).max(200).optional(),
@@ -577,7 +612,14 @@ tasksRouter.patch(
       include: { task: { select: { id: true, assigneeId: true } } },
     });
     if (!item) throw notFound('Checklist item');
-    assertCanEdit(req.ctx, item.task);
+
+    // Ticking a step off is doing the work, like a status change. Renaming the
+    // step is editing the task.
+    if (req.body.label === undefined) {
+      assertCanSetStatus(req.ctx, item.task);
+    } else {
+      assertCanEdit(req.ctx, item.task);
+    }
 
     const updated = await prisma.taskChecklistItem.update({
       where: { id: item.id },

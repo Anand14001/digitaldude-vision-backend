@@ -72,6 +72,7 @@ export const PERMISSION_GROUPS = [
       { key: 'tasks.create', label: 'Create tasks' },
       { key: 'tasks.update', label: 'Edit any task' },
       { key: 'tasks.update.assigned', label: 'Edit tasks assigned to them' },
+      { key: 'tasks.status.assigned', label: 'Change the status of their own tasks' },
       { key: 'tasks.assign', label: 'Assign tasks to others' },
       { key: 'tasks.delete', label: 'Delete tasks' },
     ],
@@ -221,6 +222,7 @@ const IMPLIED: Record<string, string[]> = {
   'retainers.view.all': ['retainers.view.assigned'],
   'tasks.view.all': ['tasks.view.assigned'],
   'tasks.update': ['tasks.update.assigned'],
+  'tasks.update.assigned': ['tasks.status.assigned'],
   'employees.view.all': ['employees.view.team'],
   'timesheets.view.all': ['timesheets.view.team'],
   'attendance.view.all': ['attendance.view.team'],
@@ -247,7 +249,7 @@ export function expandPermissions(granted: Iterable<string>): Set<string> {
 /** Permissions every staff member gets regardless of role. */
 export const BASELINE_STAFF_PERMISSIONS: string[] = [
   'tasks.view.assigned',
-  'tasks.update.assigned',
+  'tasks.status.assigned',
   'projects.view.assigned',
   'timesheets.log.own',
   'attendance.mark.own',

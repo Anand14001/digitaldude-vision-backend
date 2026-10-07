@@ -116,10 +116,14 @@ logsRouter.get(
   }),
 );
 
-/** CSV export; exporting is itself an audited action. */
+/**
+ * CSV export; exporting is itself an audited action. It needs `logs.view` like
+ * every other read here - a general report-export right must not become a side
+ * door into the audit trail.
+ */
 logsRouter.get(
   '/export',
-  requirePermission('logs.view', 'reports.export'),
+  requirePermission('logs.view'),
   validate({ query: listQuery.omit({ page: true, pageSize: true }) }),
   asyncHandler(async (req, res) => {
     const q = req.query as unknown as Omit<z.infer<typeof listQuery>, 'page' | 'pageSize'>;
