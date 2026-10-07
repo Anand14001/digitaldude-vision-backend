@@ -283,7 +283,7 @@ dashboardRouter.get(
     if (ctx.has('logs.view')) {
       payload.recentActivity = await prisma.activityLog.findMany({
         orderBy: { createdAt: 'desc' },
-        take: 12,
+        take: 5,
         select: {
           id: true,
           action: true,
