@@ -10,6 +10,7 @@ npm run test:portal      # client-portal scoping, end to end
 npm run test:kind        # internal vs client projects
 npm run test:roles       # custom project roles and the single lead
 npm run test:edits       # the admin editing paths
+npm run test:calendar    # the calendar feed
 npm run test:api         # all three
 npm run db:clean-tests   # remove everything the suites created
 ```
@@ -64,6 +65,17 @@ access alone.
 
 It creates its own throwaway employee, client and contact and removes them
 afterwards, so running it never rewrites a real record.
+
+## `calendar.mjs`
+
+Creates an event, then asks the feed for it using the **exact parameters the web
+client sends**. That matters: the filter once checked plural source names while
+the client sent the singular, so naming your sources silently emptied the whole
+calendar and no test that called the endpoint its own way would have noticed.
+
+It also covers an all-day event, that narrowing to one source does not empty the
+feed, that the plural spelling still works, that an unknown source is an error
+rather than an empty calendar, and that a cancelled event leaves the feed.
 
 ## Notes
 

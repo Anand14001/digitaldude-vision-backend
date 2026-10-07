@@ -55,15 +55,29 @@ calendarRouter.get(
       throw badRequest('Keep the range under about a year');
     }
 
+    const ALL_SOURCES = ['event', 'task', 'milestone', 'leave', 'holiday', 'cycle'];
+
     const wanted = q.sources
-      ? new Set(q.sources.split(',').map((s) => s.trim()))
-      : new Set(['events', 'tasks', 'milestones', 'leave', 'holidays', 'cycles']);
+      ? new Set(
+          q.sources
+            .split(',')
+            .map((entry) => entry.trim().toLowerCase())
+            // Tolerate the plural so an older client keeps working.
+            .map((entry) => (entry.endsWith('s') ? entry.slice(0, -1) : entry))
+            .filter((entry) => ALL_SOURCES.includes(entry)),
+        )
+      : new Set(ALL_SOURCES);
+
+    // An unrecognised filter should not silently empty the calendar.
+    if (wanted.size === 0) {
+      throw badRequest(`Unknown calendar source. Use any of: ${ALL_SOURCES.join(', ')}`);
+    }
 
     const seesEverything = req.ctx.has('calendar.view.all');
     const employeeId = q.employeeId ?? (seesEverything ? undefined : req.ctx.employeeId);
 
     const [events, tasks, milestones, leaves, holidays, cycles] = await Promise.all([
-      wanted.has('events')
+      wanted.has('event')
         ? prisma.calendarEvent.findMany({
             where: {
               startAt: { lte: q.to },
@@ -84,7 +98,7 @@ calendarRouter.get(
             },
           })
         : [],
-      wanted.has('tasks')
+      wanted.has('task')
         ? prisma.task.findMany({
             where: {
               ...taskWhere(req.ctx),
@@ -105,7 +119,7 @@ calendarRouter.get(
             take: 1000,
           })
         : [],
-      wanted.has('milestones')
+      wanted.has('milestone')
         ? prisma.milestone.findMany({
             where: { dueDate: { gte: q.from, lte: q.to }, project: projectWhere(req.ctx) },
             include: { project: { select: { id: true, code: true, name: true } } },
@@ -128,10 +142,10 @@ calendarRouter.get(
             },
           })
         : [],
-      wanted.has('holidays')
+      wanted.has('holiday')
         ? prisma.holiday.findMany({ where: { date: { gte: q.from, lte: q.to } } })
         : [],
-      wanted.has('cycles')
+      wanted.has('cycle')
         ? prisma.retainerCycle.findMany({
             where: { periodEnd: { gte: q.from, lte: q.to } },
             select: {
