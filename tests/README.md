@@ -77,6 +77,19 @@ It also covers an all-day event, that narrowing to one source does not empty the
 feed, that the plural spelling still works, that an unknown source is an error
 rather than an empty calendar, and that a cancelled event leaves the feed.
 
+## `comments.mjs`
+
+Posts a comment with an @mention the way the discussion box does, then checks
+the mention is stored and the person named is notified. The important check is
+on the picker's own data: `/employees/options/all` once returned people without
+their user id, so the client sent a list of nulls and every mention was
+refused. The hand-written client type claimed the id was there, so nothing
+caught it until someone tried to tag a colleague.
+
+Also covers that a null mention is a clear 400, that internal is the default,
+that a client-visible comment is a deliberate choice, and that a deleted comment
+leaves the thread.
+
 ## Notes
 
 - They write real rows, named with a `SMOKE `, `PORTAL ` or `KIND ` prefix.

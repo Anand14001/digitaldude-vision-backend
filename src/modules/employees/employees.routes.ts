@@ -145,7 +145,7 @@ employeesRouter.get(
       select: {
         id: true,
         employeeCode: true,
-        user: { select: { name: true, avatar: { select: { url: true } } } },
+        user: { select: { id: true, name: true, avatar: { select: { url: true } } } },
         designation: { select: { title: true } },
       },
       take: 500,

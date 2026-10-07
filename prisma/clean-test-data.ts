@@ -45,6 +45,15 @@ async function main() {
     select: { id: true, email: true },
   });
 
+  // A mention raises a notification for the person named, which outlives the
+  // comment that caused it, so this runs whatever else is left behind.
+  const mentions = await prisma.notification.deleteMany({
+    where: { type: 'MENTION', body: { contains: 'look into this ' } },
+  });
+  if (mentions.count) {
+    console.log(`\nRemoved ${mentions.count} test mention notification(s).`);
+  }
+
   if (
     !projects.length &&
     !clients.length &&
