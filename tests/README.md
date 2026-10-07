@@ -3,8 +3,6 @@
 All three scripts run against a **live API** (`npm run dev` in another terminal)
 and sign in as the seeded administrator, so they exercise the real stack:
 Express, Prisma, Postgres, the permission layer and the audit trail.
-sign in as the seeded administrator, so they exercise the real stack: Express,
-Prisma, Postgres, the permission layer and the audit trail.
 
 ```bash
 npm run test:smoke       # every endpoint the web client calls
