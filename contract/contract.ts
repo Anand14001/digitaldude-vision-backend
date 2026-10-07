@@ -1,7 +1,7 @@
 /**
  * GENERATED FILE - do not edit by hand.
  * Produced by digital-dude-api: npm run emit:contract
- * Generated at 2026-10-07T05:39:45.253Z
+ * Generated at 2026-10-07T06:53:37.754Z
  */
 
 export type UserKind = 'STAFF' | 'CLIENT';
@@ -173,14 +173,6 @@ export const HEALTH_STATUS_VALUES: readonly HealthStatus[] = [
   'ON_TRACK',
   'AT_RISK',
   'OFF_TRACK',
-];
-
-export type ProjectRole = 'LEAD' | 'MEMBER' | 'REVIEWER' | 'OBSERVER';
-export const PROJECT_ROLE_VALUES: readonly ProjectRole[] = [
-  'LEAD',
-  'MEMBER',
-  'REVIEWER',
-  'OBSERVER',
 ];
 
 export type BillingCycle = 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'ANNUAL';

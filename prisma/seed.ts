@@ -514,6 +514,26 @@ const DESIGNATIONS = [
   { title: 'Intern', level: 1 },
 ];
 
+/**
+ * What someone does on a project, as opposed to what they are allowed to do.
+ * Purely descriptive - access always comes from the person's CRM role.
+ */
+const PROJECT_ROLES = [
+  { name: 'Account Lead', color: '#4f46e5', sortOrder: 1, description: 'Owns the client relationship for this project.' },
+  { name: 'Project Coordinator', color: '#0ea5e9', sortOrder: 2, description: 'Keeps the plan, the dates and the client updates moving.' },
+  { name: 'Designer', color: '#ec4899', sortOrder: 3, description: 'Visual design and creative direction.' },
+  { name: 'Developer', color: '#3b82f6', sortOrder: 4, description: 'Builds and integrates.' },
+  { name: 'Videographer', color: '#f97316', sortOrder: 5, description: 'Shoots on location or in studio.' },
+  { name: 'Video Editor', color: '#f59e0b', sortOrder: 6, description: 'Cuts, colours and finishes the edit.' },
+  { name: 'Copywriter', color: '#14b8a6', sortOrder: 7, description: 'Scripts, captions and page copy.' },
+  { name: 'Social Media Manager', color: '#a855f7', sortOrder: 8, description: 'Calendar, scheduling and community management.' },
+  { name: 'SEO Specialist', color: '#22c55e', sortOrder: 9, description: 'On-page, technical and content SEO.' },
+  { name: 'Performance Marketer', color: '#06b6d4', sortOrder: 10, description: 'Paid campaigns and optimisation.' },
+  { name: 'Reviewer', color: '#eab308', sortOrder: 11, description: 'Signs off work before it reaches the client.' },
+  { name: 'QA', color: '#ef4444', sortOrder: 12, description: 'Tests the build before launch.' },
+  { name: 'Observer', color: '#94a3b8', sortOrder: 13, description: 'Follows along without being assigned work.' },
+];
+
 const SKILLS = [
   { name: 'React', category: 'Development' },
   { name: 'Node.js', category: 'Development' },
@@ -631,6 +651,15 @@ async function seedMasters() {
       where: { name: skill.name },
       create: skill,
       update: { category: skill.category },
+    });
+  }
+
+  log('project roles');
+  for (const role of PROJECT_ROLES) {
+    await prisma.projectRole.upsert({
+      where: { name: role.name },
+      create: role,
+      update: { color: role.color, sortOrder: role.sortOrder, description: role.description },
     });
   }
 

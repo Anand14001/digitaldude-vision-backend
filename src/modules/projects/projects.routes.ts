@@ -199,7 +199,12 @@ projectsRouter.get(
           },
         },
         members: {
+          orderBy: [{ isLead: 'desc' }, { addedAt: 'asc' }],
           include: {
+            roles: {
+              orderBy: { role: { sortOrder: 'asc' } },
+              include: { role: { select: { id: true, name: true, color: true } } },
+            },
             employee: {
               select: {
                 id: true,
@@ -300,7 +305,7 @@ projectsRouter.post(
           members: {
             create: [...new Set(body.memberIds)].map((employeeId) => ({
               employeeId,
-              role: employeeId === body.managerId ? 'LEAD' : 'MEMBER',
+              isLead: employeeId === body.managerId,
             })),
           },
         },
@@ -532,7 +537,10 @@ projectsRouter.put(
         .array(
           z.object({
             employeeId: z.string().cuid(),
-            role: z.enum(['LEAD', 'MEMBER', 'REVIEWER', 'OBSERVER']).default('MEMBER'),
+            /// At most one member may be the lead.
+            isLead: z.boolean().default(false),
+            /// Any number of admin-defined labels: Video Editor, QA, Copywriter.
+            roleIds: z.array(z.string().cuid()).max(10).default([]),
             allocationHours: z.coerce.number().min(0).max(80).nullish(),
           }),
         )
@@ -548,9 +556,26 @@ projectsRouter.put(
 
     const members = req.body.members as {
       employeeId: string;
-      role: 'LEAD' | 'MEMBER' | 'REVIEWER' | 'OBSERVER';
+      isLead: boolean;
+      roleIds: string[];
       allocationHours?: number | null;
     }[];
+
+    const leads = members.filter((member) => member.isLead);
+    if (leads.length > 1) {
+      throw badRequest('A project can have only one lead');
+    }
+
+    // Reject unknown or retired roles rather than silently dropping them.
+    const requestedRoleIds = [...new Set(members.flatMap((member) => member.roleIds))];
+    if (requestedRoleIds.length) {
+      const known = await prisma.projectRole.count({
+        where: { id: { in: requestedRoleIds }, active: true },
+      });
+      if (known !== requestedRoleIds.length) {
+        throw badRequest('One or more project roles do not exist or are no longer active');
+      }
+    }
 
     const existing = await prisma.projectMember.findMany({
       where: { projectId: project.id },
@@ -582,18 +607,32 @@ projectsRouter.put(
         where: { projectId: project.id, employeeId: { in: removed } },
       });
       for (const member of members) {
-        await tx.projectMember.upsert({
+        const saved = await tx.projectMember.upsert({
           where: {
             projectId_employeeId: { projectId: project.id, employeeId: member.employeeId },
           },
           create: {
             projectId: project.id,
             employeeId: member.employeeId,
-            role: member.role,
+            isLead: member.isLead,
             allocationHours: member.allocationHours ?? null,
           },
-          update: { role: member.role, allocationHours: member.allocationHours ?? null },
+          update: {
+            isLead: member.isLead,
+            allocationHours: member.allocationHours ?? null,
+          },
         });
+
+        // Roles are a small set, rewritten wholesale so removals take effect.
+        await tx.projectMemberRole.deleteMany({ where: { projectMemberId: saved.id } });
+        if (member.roleIds.length) {
+          await tx.projectMemberRole.createMany({
+            data: [...new Set(member.roleIds)].map((projectRoleId) => ({
+              projectMemberId: saved.id,
+              projectRoleId,
+            })),
+          });
+        }
       }
     });
 
@@ -623,6 +662,7 @@ projectsRouter.put(
       where: { projectId: project.id },
       include: {
         employee: { select: { id: true, user: { select: { name: true } } } },
+        roles: { include: { role: true } },
       },
     });
     return ok(res, result);

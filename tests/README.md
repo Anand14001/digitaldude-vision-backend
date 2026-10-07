@@ -8,6 +8,7 @@ Express, Prisma, Postgres, the permission layer and the audit trail.
 npm run test:smoke       # every endpoint the web client calls
 npm run test:portal      # client-portal scoping, end to end
 npm run test:kind        # internal vs client projects
+npm run test:roles       # custom project roles and the single lead
 npm run test:api         # all three
 npm run db:clean-tests   # remove everything the suites created
 ```
@@ -43,6 +44,13 @@ Asserts that the two project kinds stay coherent: client work must name a
 client, internal work must not, converting between them clears or demands a
 client, and an internal project never appears in a client portal — not in the
 overview, and not by requesting its id directly.
+
+## `project-roles.mjs`
+
+Covers the custom project roles: several per person, exactly one lead, unknown
+or retired roles refused, a role in use refused for deletion, and removals
+actually taking effect. It also asserts the thing that matters most about them:
+assigning a role changes nothing about what the person is allowed to do.
 
 ## Notes
 

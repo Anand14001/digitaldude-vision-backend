@@ -485,10 +485,10 @@ portalRouter.get(
       prisma.projectMember.findMany({
         where: {
           project: { clientId, visibleToClient: true, deletedAt: null, status: { in: ['PLANNING', 'ACTIVE'] } },
-          role: { in: ['LEAD', 'MEMBER'] },
         },
         select: {
-          role: true,
+          isLead: true,
+          roles: { select: { role: { select: { name: true, sortOrder: true } } } },
           employee: {
             select: {
               id: true,
@@ -512,7 +512,10 @@ portalRouter.get(
         name: m.employee.user.name,
         avatarUrl: m.employee.user.avatar?.url ?? null,
         designation: m.employee.designation?.title ?? null,
-        role: m.role,
+        isLead: m.isLead,
+        roles: m.roles
+          .sort((a, b) => a.role.sortOrder - b.role.sortOrder)
+          .map((entry) => entry.role.name),
       }));
 
     return ok(res, { contacts, agencyTeam });

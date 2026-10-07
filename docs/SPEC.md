@@ -147,6 +147,22 @@ duplicate), closes the previous stage's history row, and notifies the team.
 The seed ships a workflow per service line: website development, social media,
 video production, performance marketing, branding, influencer campaigns.
 
+## Project roles
+
+A project's team carries two separate ideas, kept apart on purpose:
+
+- **Who leads it.** One member per project may be flagged as lead. The system
+  needs this for notifications and escalation, so it stays built in.
+- **What each person does.** Admin-definable labels - Video Editor, QA,
+  Copywriter, Account Lead - held in a master list under Settings and assigned
+  per project. Someone may hold several on the same project.
+
+These labels are **descriptive only**. They never grant anything: what a person
+can do always comes from their CRM role and the scoping in `lib/scope.ts`. That
+separation is deliberate, because a role that quietly widens access on one
+project is the kind of thing nobody can reason about later. A label in use
+cannot be deleted - it is deactivated instead.
+
 ## Things worth knowing
 
 - **Codes** (`PRJ-0042`, `TSK-0117`, `RET-0003`, `DD-0005`) come from an atomic

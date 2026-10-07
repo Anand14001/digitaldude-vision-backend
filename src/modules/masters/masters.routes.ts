@@ -242,6 +242,50 @@ mastersRouter.use(
   }),
 );
 
+// -------------------------------------------------------------- project roles
+mastersRouter.use(
+  '/project-roles',
+  crudRouter({
+    model: 'projectRole',
+    label: 'Project role',
+    createSchema: z.object({
+      name,
+      description: z.string().trim().max(300).optional(),
+      color: hex.default('#64748b'),
+      sortOrder: z.coerce.number().int().min(0).max(999).default(0),
+      active: z.boolean().default(true),
+    }),
+    updateSchema: z.object({
+      name: name.optional(),
+      description: z.string().trim().max(300).nullish(),
+      color: hex.optional(),
+      sortOrder: z.coerce.number().int().min(0).max(999).optional(),
+      active: z.boolean().optional(),
+    }),
+    writePermission: 'settings.masters.manage',
+    // Anyone who can see a project needs to read these to understand its team.
+    readPermission: [
+      'settings.masters.manage',
+      'projects.view.all',
+      'projects.view.assigned',
+      'projects.members.manage',
+    ],
+    searchFields: ['name', 'description'],
+    sortFields: ['name', 'sortOrder', 'createdAt'],
+    defaultSort: 'sortOrder',
+    defaultOrder: 'asc',
+    include: { _count: { select: { members: true } } },
+    beforeDelete: async (id) => {
+      const inUse = await prisma.projectMemberRole.count({ where: { projectRoleId: id } });
+      if (inUse) {
+        throw conflict(
+          `This role is assigned to ${inUse} project member(s) - deactivate it instead`,
+        );
+      }
+    },
+  }),
+);
+
 // --------------------------------------------------------------------- assets
 mastersRouter.use(
   '/assets',

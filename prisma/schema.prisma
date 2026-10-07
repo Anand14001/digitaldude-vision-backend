@@ -771,27 +771,53 @@ model Project {
   @@index([deletedAt])
 }
 
-enum ProjectRole {
-  LEAD
-  MEMBER
-  REVIEWER
-  OBSERVER
-}
-
 model ProjectMember {
-  id         String      @id @default(cuid())
+  id         String  @id @default(cuid())
   projectId  String
   employeeId String
-  role       ProjectRole @default(MEMBER)
+  /// At most one lead per project; enforced in the service layer.
+  isLead     Boolean @default(false)
   /// Planned hours per week on this project - feeds the workload heatmap.
   allocationHours Decimal? @db.Decimal(5, 2)
-  addedAt    DateTime    @default(now())
+  addedAt    DateTime @default(now())
 
-  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  project  Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  employee Employee            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  roles    ProjectMemberRole[]
 
   @@unique([projectId, employeeId])
   @@index([employeeId])
+  @@index([projectId, isLead])
+}
+
+/// Admin-definable labels for what someone does on a project - Video Editor,
+/// Copywriter, QA. Descriptive only: access always comes from the person's CRM
+/// role, so adding one here can never widen what they can do.
+model ProjectRole {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  /// Hex colour used on the team list.
+  color       String   @default("#64748b")
+  sortOrder   Int      @default(0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members ProjectMemberRole[]
+}
+
+/// A person can hold several roles on the same project.
+model ProjectMemberRole {
+  projectMemberId String
+  projectRoleId   String
+  assignedAt      DateTime @default(now())
+
+  member ProjectMember @relation(fields: [projectMemberId], references: [id], onDelete: Cascade)
+  role   ProjectRole   @relation(fields: [projectRoleId], references: [id], onDelete: Cascade)
+
+  @@id([projectMemberId, projectRoleId])
+  @@index([projectRoleId])
 }
 
 model ProjectStageHistory {
