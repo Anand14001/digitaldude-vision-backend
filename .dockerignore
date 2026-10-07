@@ -1,0 +1,23 @@
+# Keep the build context small and make sure no real secret is ever baked in.
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+node_modules
+dist
+uploads
+.git
+.gitattributes
+.gitignore
+
+# Not needed at runtime.
+tests
+docs
+scripts
+contract
+docker-compose.yml
+*.md
+*.log
+*.tsbuildinfo
+.DS_Store

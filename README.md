@@ -141,6 +141,32 @@ Any Node host works — Railway, Render, Fly, or a VPS with a process manager.
 4. Seed once with `SEED_DEMO_DATA=false`, then clear `SEED_ADMIN_PASSWORD`.
 5. `npm start`
 
+### Container
+
+[`Dockerfile`](Dockerfile) builds the image Railway, Render and Fly all deploy
+from. Point the host at this directory and it needs no build configuration of
+its own — just the environment variables.
+
+```bash
+docker build -t digital-dude-api .
+docker run --rm -p 4000:4000 --env-file .env digital-dude-api
+```
+
+Two stages: the first compiles, the second installs production dependencies
+only, so neither TypeScript nor the test tooling ships. It runs as the `node`
+user, exposes `/health` as a `HEALTHCHECK`, and
+[`docker-entrypoint.sh`](docker-entrypoint.sh) applies pending migrations before
+`exec`ing the server — `exec` is what lets SIGTERM reach the graceful shutdown
+in [`src/server.ts`](src/server.ts).
+
+The entrypoint migrates on boot, which is safe only at one instance. Set
+`RUN_MIGRATIONS=false` and migrate as a release step if you scale past one; the
+scheduled jobs in [`src/jobs`](src/jobs) carry the same single-instance
+assumption.
+
+`prisma` is a production dependency rather than a dev one so the CLI is present
+in the image for `generate` and `migrate deploy`.
+
 Points to get right:
 
 - **`WEB_ORIGINS`** must list the exact origin the SPA is served from. CORS is
