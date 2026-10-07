@@ -31,6 +31,19 @@ async function req(method, path, { token, body } = {}) {
   return { status: response.status, data: parsed?.data ?? null, error: parsed?.error ?? null };
 }
 
+/** Uploads a file the way the browser does, as multipart form data. */
+async function upload(token, filename, contents, folder = 'documents') {
+  const form = new FormData();
+  form.append('files', new Blob([contents], { type: 'text/plain' }), filename);
+  const response = await fetch(`${BASE}/api/files?folder=${folder}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  const body = await response.json().catch(() => null);
+  return { status: response.status, data: body?.data ?? null, error: body?.error ?? null };
+}
+
 const stamp = Date.now().toString().slice(-6);
 
 const login = await req('POST', '/auth/login', {
@@ -172,6 +185,76 @@ expect(
   (await req('DELETE', `/clients/contacts/${second.data.id}`, A)).status,
   204,
 );
+
+// ===================== employee documents =====================
+const uploaded = await upload(A.token, `contract-${stamp}.txt`, 'Sample contract body');
+expect('upload a file', uploaded.status, 201);
+expect('upload returns a file record', Boolean(uploaded.data?.[0]?.id), true);
+
+const nextYear = new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10);
+const document = await req(`POST`, `/employees/${subject.id}/documents`, {
+  ...A,
+  body: {
+    type: 'CONTRACT',
+    title: `KIND Contract ${stamp}`,
+    fileId: uploaded.data[0].id,
+    expiresAt: nextYear,
+  },
+});
+expect('attach the file as a document', document.status, 201);
+
+const withDocument = await req('GET', `/employees/${subject.id}`, A);
+expect('document appears on the employee', withDocument.data?.documents?.length, 1);
+expect(
+  'document keeps its type',
+  withDocument.data?.documents?.[0]?.type,
+  'CONTRACT',
+);
+expect(
+  'document carries a downloadable url',
+  Boolean(withDocument.data?.documents?.[0]?.file?.url),
+  true,
+);
+expect(
+  'expiry is stored for the reminder job',
+  withDocument.data?.documents?.[0]?.expiresAt?.slice(0, 10),
+  nextYear,
+);
+
+// Documents are a separate clearance: an Executive must not be able to add one.
+const exec = await req('POST', '/auth/login', {
+  body: { email: 'karthik@digital-dude.com', password: 'karthik@dd123' },
+});
+if (exec.status === 200) {
+  const E = { token: exec.data.accessToken };
+  expect(
+    'an executive cannot add a document',
+    (await req('POST', `/employees/${subject.id}/documents`, {
+      ...E,
+      body: { type: 'OTHER', title: 'nope', fileId: uploaded.data[0].id },
+    })).status,
+    403,
+  );
+  expect(
+    'an executive cannot delete a document',
+    (await req('DELETE', `/employees/documents/${document.data.id}`, E)).status,
+    403,
+  );
+} else {
+  checks.push({
+    name: 'executive sign-in for the document permission check',
+    ok: false,
+    detail: `login failed: ${exec.status}`,
+  });
+}
+
+expect(
+  'admin can delete the document',
+  (await req('DELETE', `/employees/documents/${document.data.id}`, A)).status,
+  204,
+);
+const afterDelete = await req('GET', `/employees/${subject.id}`, A);
+expect('document is gone', afterDelete.data?.documents?.length, 0);
 
 // ---- tidy up everything this test created ----
 await req('DELETE', `/clients/contacts/${contact.id}`, A);
